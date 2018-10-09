@@ -143,7 +143,15 @@ module Paramnoia
 
           {% elsif non_nil_type == Bool %}
             %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}}, {{default}})
+            {% if nilable %}
+              if %value.nil?
+                @{{ivar.name}} = nil
+              else
+            {% end %}
             @{{ivar.name}} = !\%w[0 false no].includes?(%value.downcase)
+            {% if nilable %}
+              end
+            {% end %}
             {% if settings[:strict] %}
               handled_param_names << %param_name
             {% end %}
