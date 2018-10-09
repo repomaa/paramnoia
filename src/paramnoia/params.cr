@@ -165,7 +165,15 @@ module Paramnoia
 
           {% else %}
             %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}}, {{default}})
-            @{{ivar.name}} = {{non_nil_type}}.new(%value)
+            {% if nilable %}
+              if %value.nil?
+                @{{ivar.name}} = nil
+              else
+            {% end %}
+              @{{ivar.name}} = {{non_nil_type}}.new(%value)
+            {% if nilable %}
+              end
+            {% end %}
             {% if settings[:strict] %}
               handled_param_names << %param_name
             {% end %}
