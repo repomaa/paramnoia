@@ -41,9 +41,6 @@ module Paramnoia
     def initialize(http_params : HTTP::Params, path = %w[])
       {% begin %}
         {% settings = @type.annotation(::Paramnoia::Settings) || { strict: false } %}
-        {% if settings[:strict] %}
-          handled_param_names = [] of String
-        {% end %}
 
         {% for ivar in @type.instance_vars %}
           {% non_nil_type = ivar.type.union? ? ivar.type.union_types.reject { |type| type == ::Nil }.first : ivar.type %}
@@ -76,7 +73,16 @@ module Paramnoia
             {% end %}
 
             @{{ivar.name}} = %values.map do |item|
-              {{non_nil_type.type_vars.first}}.new(item)
+              {% item_type = non_nil_type.type_vars.first %}
+              {% if item_type <= String %}
+                item
+              {% elsif item_type == Bool %}
+                !\%w[0 false no].includes?(item)
+              {% elsif item_type <= Enum %}
+                {{item_type}}.parse(item)
+              {% else %}
+                {{item_type}}.new(item)
+              {% end %}
             end
 
             {% if nilable || has_default %}
@@ -90,8 +96,17 @@ module Paramnoia
           {% elsif non_nil_type <= Tuple %}
             %values = http_params.fetch_all("#{%param_name}[]")
             @{{ivar.name}} = {
-              {% for tuple_type, index in non_nil_type.type_vars %}
-                {{tuple_type}}.new(%values[{{index}}]),
+              {% for item_type, index in non_nil_type.type_vars %}
+                {% if item_type <= String %}
+                  item
+                {% elsif item_type == Bool %}
+                  !\%w[0 false no].includes?(item)
+                {% elsif item_type <= Enum %}
+                  {{item_type}}.parse(item)
+                {% else %}
+                  {{item_type}}.new(item)
+                {% end %}
+                ,
               {% end %}
             }
 
