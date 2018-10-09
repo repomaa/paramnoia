@@ -21,7 +21,7 @@ module Paramnoia
 
     macro string_value_from_params(params, name, nilable, has_default_value, default_value)
       %values = string_values_from_params({{params}}, {{name}}, {{nilable}}, {{has_default_value}})
-      {% if nilable || default_value %}
+      {% if nilable || has_default_value %}
         %values.empty? ? {{has_default_value ? default_value : nil}} : %values.last
       {% else %}
         %values.last
