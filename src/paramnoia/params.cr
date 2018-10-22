@@ -19,17 +19,17 @@ module Paramnoia
       end
     end
 
-    macro string_value_from_params(params, name, nilable, has_default_value, default_value)
-      %values = string_values_from_params({{params}}, {{name}}, {{nilable}}, {{has_default_value}})
-      {% if nilable || has_default_value %}
-        %values.empty? ? {{has_default_value ? default_value : nil}} : %values.last
+    macro string_value_from_params(params, name, nilable, has_default)
+      %values = string_values_from_params({{params}}, {{name}}, {{nilable}}, {{has_default}})
+      {% if nilable || has_default %}
+        %values.empty? ? nil : %values.last
       {% else %}
         %values.last
       {% end %}
     end
 
-    macro string_values_from_params(params, name, nilable, has_default_value)
-      {% if nilable || has_default_value %}
+    macro string_values_from_params(params, name, nilable, has_default)
+      {% if nilable || has_default %}
         {{params}}.fetch_all({{name}})
       {% else %}
         {{params}}.fetch_all({{name}}).tap do |values|
@@ -46,7 +46,7 @@ module Paramnoia
           {% non_nil_type = ivar.type.union? ? ivar.type.union_types.reject { |type| type == ::Nil }.first : ivar.type %}
           {% nilable = ivar.type.nilable? %}
           {% has_default = ivar.has_default_value? %}
-          {% default = ivar.default_value %}
+          {% default = has_default ? ivar.default_value : nil %}
           {% ann = ivar.annotation(::Paramnoia::Params::Field) %}
           {% converter = ann && ann[:converter] %}
           {% key = (ann && ann[:key] || ivar.name.stringify) %}
@@ -56,7 +56,7 @@ module Paramnoia
             %values = string_values_from_params(http_params, %param_name, {{nilable}}, {{has_default}})
             {% if nilable || has_default %}
               if %values.empty?
-                @{{ivar.name}} = {{has_default ? default : nil}}
+                @{{ivar.name}} = {{default}}
               else
             {% end %}
               @{{ivar.name}} = {{converter}}.from_params(%values)
@@ -68,7 +68,7 @@ module Paramnoia
             %values = string_values_from_params(http_params, "#{%param_name}[]", {{nilable}}, {{has_default}})
             {% if nilable || has_default %}
               if %values.empty?
-                @{{ivar.name}} = {{has_default ? default : nil}}
+                @{{ivar.name}} = {{default}}
               else
             {% end %}
 
@@ -94,21 +94,28 @@ module Paramnoia
             {% end %}
 
           {% elsif non_nil_type <= Tuple %}
-            %values = http_params.fetch_all("#{%param_name}[]")
+            %values = string_values_from_params(http_params, "#{%param_name}[]", {{nilable}}, {{has_default}})
+            {% if nilable || has_default %}
+              if %values.empty?
+                @{{ivar.name}} = {{default}}
+              else
+            {% end %}
             @{{ivar.name}} = {
               {% for item_type, index in non_nil_type.type_vars %}
                 {% if item_type <= String %}
-                  item
+                  %values[{{index}}],
                 {% elsif item_type == Bool %}
-                  !\%w[0 false no].includes?(item)
+                  !\%w[0 false no].includes?(%values[{{index}}]),
                 {% elsif item_type <= Enum %}
-                  {{item_type}}.parse(item)
+                  {{item_type}}.parse(%values[{{index}}]),
                 {% else %}
-                  {{item_type}}.new(item)
+                  {{item_type}}.new(%values[{{index}}]),
                 {% end %}
-                ,
               {% end %}
             }
+            {% if nilable || has_default %}
+              end
+            {% end %}
 
             {% if settings[:strict] %}
               handled_param_names << "#{%param_name}[]"
@@ -128,28 +135,34 @@ module Paramnoia
             if %nested_params.any?
               @{{ivar.name}} = {{non_nil_type}}.new(%nested_params, path + [{{ivar.name.stringify}}])
             else
-              {% if nilable %}
-                @{{ivar.name}} = nil
+              {% if nilable || has_default %}
+                @{{ivar.name}} = {{default}}
               {% else %}
                 raise KeyError.new(%|Missing nested hash keys: "#{%param_name}"|)
               {% end %}
             end
 
           {% elsif non_nil_type == String %}
-            @{{ivar.name}} = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}}, {{default}})
+            %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}})
+            {% if nilable || has_default %}
+              @{{ivar.name}} = %value || {{default}}
+            {% else %}
+              @{{ivar.name}} = %value
+            {% end %}
+
             {% if settings[:strict] %}
               handled_param_names << %param_name
             {% end %}
 
           {% elsif non_nil_type == Bool %}
-            %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}}, {{default}})
-            {% if nilable %}
+            %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}})
+            {% if nilable || has_default %}
               if %value.nil?
-                @{{ivar.name}} = nil
+                @{{ivar.name}} = {{default}}
               else
             {% end %}
             @{{ivar.name}} = !\%w[0 false no].includes?(%value.downcase)
-            {% if nilable %}
+            {% if nilable || has_default %}
               end
             {% end %}
             {% if settings[:strict] %}
@@ -157,21 +170,26 @@ module Paramnoia
             {% end %}
 
           {% elsif non_nil_type <= ::Enum %}
-            %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}}, {{default}})
-            @{{ivar.name}} = {{non_nil_type}}.parse(%value)
+            %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}})
+            {% if nilable || has_default %}
+              @{{ivar.name}} = %value.try { |value| {{non_nil_type}}.parse(value) } || {{default}}
+            {% else %}
+              @{{ivar.name}} = {{non_nil_type}}.parse(%value)
+            {% end %}
+
             {% if settings[:strict] %}
               handled_param_names << %param_name
             {% end %}
 
           {% else %}
-            %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}}, {{default}})
-            {% if nilable %}
+            %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}})
+            {% if nilable || has_default %}
               if %value.nil?
-                @{{ivar.name}} = nil
+                @{{ivar.name}} = {{default}}
               else
             {% end %}
               @{{ivar.name}} = {{non_nil_type}}.new(%value)
-            {% if nilable %}
+            {% if nilable || has_default %}
               end
             {% end %}
             {% if settings[:strict] %}
