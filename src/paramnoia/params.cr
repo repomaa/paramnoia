@@ -181,6 +181,49 @@ module Paramnoia
               handled_param_names << %param_name
             {% end %}
 
+          {% elsif non_nil_type <= Hash %}
+            %value = {{non_nil_type}}.new
+            escaped_param_name = Regex.escape(%param_name)
+            matcher = /^#{escaped_param_name}\[(?<key>[^\]]+)\]$/
+
+            {% key_type = non_nil_type.type_vars[0] %}
+            {% value_type = non_nil_type.type_vars[1] %}
+
+            http_params.each do |key, value|
+              match = key.match(matcher)
+              next if match.nil?
+
+              {% if key_type <= String %}
+                key = match["key"]
+              {% else %}
+                key = {{key_type}}.new(match["key"])
+              {% end %}
+
+              {% if value_type <= String %}
+                %value[key] = value
+              {% elsif value_type == Bool %}
+                %value[key] = !\%w[0 false no].includes?(value)
+              {% elsif value_type <= Enum %}
+                %value[key] = {{value_type}}.parse(value)
+              {% else %}
+                %value[key] = {{value_type}}.new(value)
+              {% end %}
+
+              {% if settings[:strict] %}
+                handled_param_names << key
+              {% end %}
+            end
+
+            if %value.empty?
+              {% if nilable || has_default %}
+                @{{ivar.name}} = {{default}}
+              {% else %}
+                raise KeyError.new(%|Missing nested keys for: "#{%param_name}"|)
+              {% end %}
+            else
+              @{{ivar.name}} = %value
+            end
+
           {% else %}
             %value = string_value_from_params(http_params, %param_name, {{nilable}}, {{has_default}})
             {% if nilable || has_default %}
