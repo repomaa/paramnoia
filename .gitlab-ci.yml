@@ -1,0 +1,16 @@
+stages:
+  - test
+
+test:
+  stage: test
+  image: crystallang/crystal
+  script:
+    - shards build spec
+    - bin/spec
+
+lint:
+  stage: test
+  image: crystallang/crystal
+  script:
+    - shards install
+    - bin/ameba

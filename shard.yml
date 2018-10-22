@@ -1,8 +1,22 @@
 name: paramnoia
 version: 0.1.0
 
+targets:
+  spec:
+    main: spec/paramnoia_spec.cr
+
 authors:
   - Joakim Reinert <mail@jreinert.com>
+
+development_dependencies:
+  paladin:
+    github: jreinert/paladin
+  ameba:
+    github: veelenga/ameba
+
+crystal: 0.26.1
+
+license: MIT
 
 crystal: 0.26.1
 
