@@ -122,7 +122,7 @@ module Paramnoia
             {% end %}
 
           {% elsif non_nil_type <= ::Paramnoia::Params %}
-            %nested_params = HTTP::Params.new
+            %nested_params = HTTP::Params.new({} of String => Array(String))
             http_params.each do |key, value|
               if key.starts_with?("#{%param_name}[")
                 %nested_params.add(key, value)
