@@ -184,10 +184,15 @@ module Paramnoia
           {% elsif non_nil_type <= Hash %}
             %value = {{non_nil_type}}.new
             escaped_param_name = Regex.escape(%param_name)
-            matcher = /^#{escaped_param_name}\[(?<key>[^\]]+)\]$/
 
             {% key_type = non_nil_type.type_vars[0] %}
             {% value_type = non_nil_type.type_vars[1] %}
+
+            {% if value_type <= Array %}
+              matcher = /^#{escaped_param_name}\[(?<key>[^\]]+)\]\[\]$/
+            {% else %}
+              matcher = /^#{escaped_param_name}\[(?<key>[^\]]+)\]$/
+            {% end %}
 
             http_params.each do |key, value|
               match = key.match(matcher)
@@ -199,14 +204,25 @@ module Paramnoia
                 key = {{key_type}}.new(match["key"])
               {% end %}
 
-              {% if value_type <= String %}
-                %value[key] = value
-              {% elsif value_type == Bool %}
-                %value[key] = !\%w[0 false no].includes?(value)
-              {% elsif value_type <= Enum %}
-                %value[key] = {{value_type}}.parse(value)
+              {% element_type = value_type <= Array ? value_type.type_vars.first : value_type %}
+
+              {% if element_type <= String %}
+              {% elsif element_type == Bool %}
+                value = !\%w[0 false no].includes?(value)
+              {% elsif element_type <= Enum %}
+                value = {{element_type}}.parse(value)
               {% else %}
-                %value[key] = {{value_type}}.new(value)
+                value = {{element_type}}.new(value)
+              {% end %}
+
+              {% if value_type <= Array %}
+                if %value.has_key?(key)
+                  %value[key] << value
+                else
+                  %value[key] = {{value_type}}.new(1) { value }
+                end
+              {% else %}
+                %value[key] = value
               {% end %}
 
               {% if settings[:strict] %}

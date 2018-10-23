@@ -22,7 +22,7 @@ class TestParams
   getter optional_array : Array(String)?
   getter array_with_default : Array(String) = %w[foo bar baz]
   getter hash : Hash(String, Int32)
-  getter optional_hash : Hash(String, Int32)?
+  getter optional_hash : Hash(String, Array(Int32))?
   getter hash_with_default : Hash(String, Int32) = {"foo" => 1}
   getter tuple : Tuple(String, Int32, Float64)
   getter optional_tuple : Tuple(String, Int32, Float64)?
@@ -63,8 +63,9 @@ describe Paramnoia do
         p.add("array_with_default[]", "foo")
         p.add("hash[foo]", "1")
         p.add("hash[bar]", "2")
-        p.add("optional_hash[foo]", "3")
-        p.add("optional_hash[bar]", "4")
+        p.add("optional_hash[foo][]", "3")
+        p.add("optional_hash[foo][]", "4")
+        p.add("optional_hash[bar][]", "5")
         p.add("hash_with_default[foo]", "5")
         p.add("tuple[]", "foo")
         p.add("tuple[]", "2")
@@ -92,7 +93,7 @@ describe Paramnoia do
       params.optional_array.should eq(%w[foo bar])
       params.array_with_default.should eq(%w[foo])
       params.hash.should eq({ "foo" => 1, "bar" => 2 })
-      params.optional_hash.should eq({ "foo" => 3, "bar" => 4 })
+      params.optional_hash.should eq({ "foo" => [3, 4], "bar" => [5] })
       params.hash_with_default.should eq({ "foo" => 5 })
       params.tuple.should eq({ "foo", 2, 3.5 })
       params.boolean.should eq(true)
