@@ -42,6 +42,24 @@ class TestParams
   end
 end
 
+@[Paramnoia::Settings(strict: true)]
+class StrictParams
+  include Paramnoia::Params
+
+  getter foo : Int32?
+  getter bar : Int16 = 2
+  getter baz : Array(String)
+end
+
+@[Paramnoia::Settings(unmapped: true)]
+class UnmappedParams
+  include Paramnoia::Params
+
+  getter foo : Int32?
+  getter bar : Int16 = 2
+  getter baz : Array(String)
+end
+
 describe Paramnoia do
   context "with all fields set correctly" do
     it "works" do
@@ -171,6 +189,51 @@ describe Paramnoia do
         params.boolean_with_default.should eq(false)
         params.nested.bar.should eq(2)
       end
+    end
+  end
+
+  context "with strict setting" do
+    it "works" do
+      http_params = HTTP::Params.build do |p|
+        p.add("baz[]", "foo")
+      end
+
+      params = StrictParams.from_urlencoded(http_params)
+      params.baz.should eq(%w[foo])
+    end
+
+    it "raises on unknown params" do
+      http_params = HTTP::Params.build do |p|
+        p.add("baz[]", "foo")
+        p.add("faz", "foo")
+      end
+
+      expect_raises(Exception) do
+        StrictParams.from_urlencoded(http_params)
+      end
+    end
+  end
+
+  context "with unmapped setting" do
+    it "works" do
+      http_params = HTTP::Params.build do |p|
+        p.add("baz[]", "foo")
+      end
+
+      params = UnmappedParams.from_urlencoded(http_params)
+      params.baz.should eq(%w[foo])
+      params.query_unmapped.empty?.should be_true
+    end
+
+    it "stores unknown params in query_unmapped" do
+      http_params = HTTP::Params.build do |p|
+        p.add("baz[]", "foo")
+        p.add("faz", "bar")
+      end
+
+      params = UnmappedParams.from_urlencoded(http_params)
+      params.baz.should eq(%w[foo])
+      params.query_unmapped["faz"].should eq(%w[bar])
     end
   end
 end

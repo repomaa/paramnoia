@@ -14,6 +14,17 @@ module Paramnoia
     include JSON::Serializable
 
     macro included
+      {% settings = @type.annotation(::Paramnoia::Settings) || { strict: false, unmapped: false } %}
+      {% raise "strict and unmapped are mutually exclusive" if settings[:strict] && settings[:unmapped] %}
+      {% if settings[:strict] %}
+        include JSON::Serializable::Strict
+      {% elsif settings[:unmapped] %}
+        include JSON::Serializable::Unmapped
+
+        @[JSON::Field(ignore: true)]
+        getter query_unmapped = Hash(String, Array(String)).new
+      {% end %}
+
       def self.from_urlencoded(string)
         new(HTTP::Params.parse(string))
       end
@@ -40,7 +51,10 @@ module Paramnoia
 
     def initialize(http_params : HTTP::Params, path = %w[])
       {% begin %}
-        {% settings = @type.annotation(::Paramnoia::Settings) || { strict: false } %}
+        {% settings = @type.annotation(::Paramnoia::Settings) || { strict: false, unmapped: false } %}
+        {% if settings[:strict] || settings[:unmapped] %}
+          handled_param_names = [] of String
+        {% end %}
 
         {% for ivar in @type.instance_vars %}
           {% non_nil_type = ivar.type.union? ? ivar.type.union_types.reject { |type| type == ::Nil }.first : ivar.type %}
@@ -89,7 +103,7 @@ module Paramnoia
               end
             {% end %}
 
-            {% if settings[:strict] %}
+            {% if settings[:strict] || settings[:unmapped] %}
               handled_param_names << "#{%param_name}[]"
             {% end %}
 
@@ -117,7 +131,7 @@ module Paramnoia
               end
             {% end %}
 
-            {% if settings[:strict] %}
+            {% if settings[:strict] || settings[:unmapped] %}
               handled_param_names << "#{%param_name}[]"
             {% end %}
 
@@ -126,7 +140,7 @@ module Paramnoia
             http_params.each do |key, value|
               if key.starts_with?("#{%param_name}[")
                 %nested_params.add(key, value)
-                {% if settings[:strict] %}
+                {% if settings[:strict] || settings[:unmapped] %}
                   handled_param_names << key
                 {% end %}
               end
@@ -150,7 +164,7 @@ module Paramnoia
               @{{ivar.name}} = %value
             {% end %}
 
-            {% if settings[:strict] %}
+            {% if settings[:strict] || settings[:unmapped] %}
               handled_param_names << %param_name
             {% end %}
 
@@ -165,7 +179,7 @@ module Paramnoia
             {% if nilable || has_default %}
               end
             {% end %}
-            {% if settings[:strict] %}
+            {% if settings[:strict] || settings[:unmapped] %}
               handled_param_names << %param_name
             {% end %}
 
@@ -177,7 +191,7 @@ module Paramnoia
               @{{ivar.name}} = {{non_nil_type}}.parse(%value)
             {% end %}
 
-            {% if settings[:strict] %}
+            {% if settings[:strict] || settings[:unmapped] %}
               handled_param_names << %param_name
             {% end %}
 
@@ -225,7 +239,7 @@ module Paramnoia
                 %value[key] = value
               {% end %}
 
-              {% if settings[:strict] %}
+              {% if settings[:strict] || settings[:unmapped] %}
                 handled_param_names << key
               {% end %}
             end
@@ -251,15 +265,20 @@ module Paramnoia
             {% if nilable || has_default %}
               end
             {% end %}
-            {% if settings[:strict] %}
+            {% if settings[:strict] || settings[:unmapped] %}
               handled_param_names << %param_name
             {% end %}
           {% end %}
         {% end %}
 
-        {% if settings[:strict] %}
+        {% if settings[:strict] || settings[:unmapped] %}
           http_params.each do |key, _|
-            raise %|Unknown param: "#{key}"| unless handled_param_names.includes?(key)
+            next if handled_param_names.includes?(key)
+            {% if settings[:strict] %}
+              raise %|Unknown param: "#{key}"|
+            {% else %}
+              @query_unmapped[key] = http_params.fetch_all(key)
+            {% end %}
           end
         {% end %}
       {% end %}
