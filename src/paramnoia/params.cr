@@ -11,9 +11,9 @@ module Paramnoia
     annotation Field
     end
 
-    include JSON::Serializable
-
     macro included
+      include JSON::Serializable
+
       {% settings = @type.annotation(::Paramnoia::Settings) || { strict: false, unmapped: false } %}
       {% raise "strict and unmapped are mutually exclusive" if settings[:strict] && settings[:unmapped] %}
       {% if settings[:strict] %}
@@ -27,6 +27,17 @@ module Paramnoia
 
       def self.from_urlencoded(string)
         new(HTTP::Params.parse(string))
+      end
+
+      def self.new(http_params : HTTP::Params, path : Array(String) = [] of String)
+        new_from_http_params(http_params, path)
+      end
+
+      private def self.new_from_http_params(http_params : HTTP::Params, path : Array(String) = [] of String)
+        instance = allocate
+        instance.initialize(__http_params_from_paramnoia: http_params, __path_from_paramnoia: path)
+        GC.add_finalizer(instance) if instance.responds_to?(:finalize)
+        instance
       end
     end
 
@@ -49,7 +60,7 @@ module Paramnoia
       {% end %}
     end
 
-    def initialize(http_params : HTTP::Params, path = %w[])
+    def initialize(*, __http_params_from_paramnoia http_params : HTTP::Params, __path_from_paramnoia path = [] of String)
       {% begin %}
         {% settings = @type.annotation(::Paramnoia::Settings) || { strict: false, unmapped: false } %}
         {% if settings[:strict] || settings[:unmapped] %}
@@ -147,7 +158,10 @@ module Paramnoia
             end
 
             if %nested_params.any?
-              @{{ivar.name}} = {{non_nil_type}}.new(%nested_params, path + [{{ivar.name.stringify}}])
+              @{{ivar.name}} = {{non_nil_type}}.new(
+                %nested_params,
+                path + [{{ivar.name.stringify}}]
+              )
             else
               {% if nilable || has_default %}
                 @{{ivar.name}} = {{default}}

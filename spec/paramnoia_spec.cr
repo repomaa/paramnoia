@@ -236,4 +236,13 @@ describe Paramnoia do
       params.query_unmapped["faz"].should eq(%w[bar])
     end
   end
+
+  context "from json" do
+    it "parses from json payload" do
+      json = %|{"baz":["foo"],"foo":1}|
+      params = StrictParams.from_json(json)
+      params.foo.should eq(1)
+      params.baz.should eq(%w[foo])
+    end
+  end
 end
